@@ -150,6 +150,39 @@ A few cities such as Albuquerque, NM and Stockton, CA have adjusted odds ratios 
 
 Overall, the plot suggests a consistent pattern where male-victim homicides are less likely to have a resolution, though the strength of this pattern varies by city.
 
+### Problem 2
+```{r import dataset}
+library(p8105.datasets)
+data("weather_df")
+set.seed(1234)
+# keep only rows with complete data
+weather = weather_df |>
+  drop_na(tmax, tmin, prcp)
+```
+
+#### Bootstrap resamples and estimates
+```{r bootstrap estimates}
+weather_boot = weather |>
+  modelr::bootstrap(n = 5000)
+# fit hte regression in each bootstrap sample
+# extract r^2 and beta1/beta2
+boot_result = weather_boot |>
+  mutate(
+    fit = map(strap, ~lm(tmax ~ tmin + prcp, data = .x)), 
+    glnc = map(fit, broom::glance), 
+    tidy = map(fit, broom::tidy)
+  ) |>
+  mutate(
+    r_sq = map_dbl(glnc, "r.squared"), 
+    beta1 = map_dbl(tidy, ~.x$estimate[.x$term == "tmin"]), 
+    beta2 = map_dbl(tidy, ~.x$estimate[.x$term == "prcp"]), 
+    beta_ratio = beta1/beta2
+  ) |>
+  select(.id, r_sq, beta_ratio)
+
+boot_result |> head()
+```
+
 
 
 
