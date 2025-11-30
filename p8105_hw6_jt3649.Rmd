@@ -206,6 +206,14 @@ boot_result |>
   )
 ```
 
-
-
-
+#### 95% Confidence intervals
+```{r bootstrap CI}
+ci_result = boot_result |>
+  summarize(
+    r2_lower = quantile(r_sq, 0.025), 
+    r2_upper = quantile(r_sq, 0.975), 
+    ratio_lower = quantile(beta_ratio, 0.025), 
+    ratio_upper = quantile(beta_ratio, 0.975)
+  )
+knitr::kable(ci_result)
+```
