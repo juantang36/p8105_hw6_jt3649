@@ -164,7 +164,7 @@ weather = weather_df |>
 ```{r bootstrap estimates}
 weather_boot = weather |>
   modelr::bootstrap(n = 5000)
-# fit hte regression in each bootstrap sample
+# fit the regression in each bootstrap sample
 # extract r^2 and beta1/beta2
 boot_result = weather_boot |>
   mutate(
@@ -181,6 +181,29 @@ boot_result = weather_boot |>
   select(.id, r_sq, beta_ratio)
 
 boot_result |> head()
+```
+
+#### Distribution of estimates
+```{r distribution plot}
+# distribution of r^2
+boot_result |>
+  ggplot(aes(x = r_sq)) + 
+  geom_histogram(bins = 30) + 
+  labs(
+    title = "Bootstrap distribution of R-squared", 
+    x = expression (R^2), 
+    y = "Count"
+  )
+
+# distribution of beta1/beta2
+boot_result |>
+  ggplot(aes(x = beta_ratio)) + 
+  geom_histogram(bins = 30) + 
+  labs(
+    title = "Bootstrap distribution of" ~ hat(beta)[1]/hat(beta)[2], 
+    x = expression(hat(beta)[1]/hat(beta)[2]), 
+    y = "Count"
+  )
 ```
 
 
