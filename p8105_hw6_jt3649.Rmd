@@ -2,7 +2,7 @@
 title: "p8105_hw6_jt3649"
 author: "Juan Tang"
 date: "2025-11-28"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
@@ -149,4 +149,7 @@ In most cities, the estimated odds ratio for male versus female victims is small
 A few cities such as Albuquerque, NM and Stockton, CA have adjusted odds ratios near or above 1, but their confidence intervals are wide. This implies that there could have substantial uncertainties probably due to smaller sample sizes. 
 
 Overall, the plot suggests a consistent pattern where male-victim homicides are less likely to have a resolution, though the strength of this pattern varies by city.
+
+
+
 
