@@ -1,0 +1,152 @@
+---
+title: "p8105_hw6_jt3649"
+author: "Juan Tang"
+date: "2025-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(ggplot2)
+
+```
+
+### Problem 1
+#### Clean data
+```{r clean homicides data}
+homicides_raw = read.csv("homicide-data.csv") |>
+  janitor::clean_names()
+homicides_clean = homicides_raw |>
+  mutate(
+    city_state = str_c(city, ", ", state), 
+    # solved = 1 if closed by arrest, 0 otherwise
+    solved = if_else(disposition == "Closed by arrest", 1L, 0L), 
+    # suppress non-numeric victim age to NA
+    victim_age = suppressWarnings(as.numeric(victim_age))
+  ) |>
+  # drop cities that do not report victim race or have mistakes
+  filter(
+    !city_state %in% c(
+      "Dallas, TX", 
+      "Phoenix, AZ", 
+      "Kansas City, MO", 
+      "Tulsa, AL"
+    )) |>
+      # keep only white/black victims
+      filter(victim_race %in% c("White", "Black")) |>
+      #drop cases with missing variables
+      filter(
+        !is.na(victim_age), 
+        !is.na(victim_sex), 
+        !is.na(victim_race)
+      )
+```
+#### Logistic regression for Baltimore, MD
+```{r logistic regression for Baltimore, MD}
+# outcome: solved
+# predictors: victim_age, victim_sex, victim_race
+baltimore_data = homicides_clean |>
+  filter(city_state == "Baltimore, MD")
+# fit losgistic regression model
+baltimore_fit = glm(
+  solved ~ victim_age + victim_sex + victim_race, 
+  data = baltimore_data, 
+  family = binomial
+)
+# odds ratio and CI
+baltimore_or = baltimore_fit|>
+  broom::tidy(exponentiate = TRUE, conf.int = TRUE)
+knitr::kable(baltimore_or)
+```
+
+#### Odds ratio for male vs female victims in Baltimore, MD
+```{r adjusted odds ratio in Baltimore, MD}
+baltimore_male_or = baltimore_or |>
+  # odds ratio for male to female victims, with other variables constant 
+  filter(term == "victim_sexMale") |>
+  select(term, estimate, conf.low, conf.high)
+knitr::kable(baltimore_male_or)
+```
+
+#### Logistic regression for all cities
+```{r logistic regression all cities}
+city_model = homicides_clean |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    # fit glm in each city
+    fit = purrr::map(
+      data, 
+      ~ glm(
+        solved ~ victim_age + victim_sex + victim_race, 
+        data = .x, 
+        family = binomial
+      )
+    ), 
+    # tidy the output
+    tidy_fit = purrr::map(
+      fit, 
+      ~ broom::tidy(
+        .x, 
+        exponentiate = TRUE, conf.int = TRUE
+      )
+    )
+  ) |>
+  select(city_state, tidy_fit) |>
+  unnest(tidy_fit)
+
+# keep only male vs female effect with other variables fixed
+city_or_male = city_model |>
+  filter(term == "victim_sexMale") |>
+  select(
+    city_state, 
+    estimate, 
+    conf.low, 
+    conf.high
+  ) |>
+  rename(
+    or_male_vs_female = estimate, 
+    ci_low = conf.low, 
+    ci_high = conf.high
+  ) |>
+  arrange(or_male_vs_female)
+
+knitr::kable(city_or_male)
+```
+
+#### Estimated ORs and CIs plot
+```{r OR and CI plot}
+ggplot(
+  city_or_male, 
+  aes(
+    x = or_male_vs_female, 
+    y = fct_reorder(city_state, or_male_vs_female)
+  )
+) + 
+  geom_point() + 
+  geom_errorbarh(
+    aes(
+      xmin = ci_low, 
+      xmax = ci_high
+    ), 
+    height = 0
+  ) + 
+  geom_vline(
+    xintercept = 1, 
+    linetype = "dashed"
+  ) + 
+  labs(
+    title = "Adjusted odds of solving homicides for male vs female victims", 
+    x = "Adjusted odds ratio (male vs female)", 
+    y = "City"
+  ) + 
+  theme_minimal(base_size = 12)
+```
+
+#### Comments
+In most cities, the estimated odds ratio for male versus female victims is smaller than 1, suggesting that homicides with male victims tend to be less likely to be solved than those with female victims, with fixed victim age and race. 
+
+A few cities such as Albuquerque, NM and Stockton, CA have adjusted odds ratios near or above 1, but their confidence intervals are wide. This implies that there could have substantial uncertainties probably due to smaller sample sizes. 
+
+Overall, the plot suggests a consistent pattern where male-victim homicides are less likely to have a resolution, though the strength of this pattern varies by city.
+
