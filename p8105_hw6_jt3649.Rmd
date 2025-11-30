@@ -217,3 +217,14 @@ ci_result = boot_result |>
   )
 knitr::kable(ci_result)
 ```
+
+#### Comment on distribution
+#### Distribution of R^2
+The bootstrap distribution of r^2 is approximately bell-shaped and symmertric, centered around 0.94. This indicates that across the repeated resampling of the Central Park weather data, the fitted linear regression model with predictors tmin and prcp are able to explain about 94% of the variability in tmax.
+
+The 95% confidence interval for r^2 is [`r round(ci_result[,"r2_lower"], 3)`, `r round(ci_result[,"r2_upper"], 3)`].
+
+#### Distribution of beta1/beta2
+The distribution of the coefficient ratio beta1/beta2 is skewed to the left. It shows a much wide spread than the r^2 distribution. This implies that beta1 (coefficient for tmin) is positive and fairly stable, while beta2 (coefficient for prcp) is very close to zero, slightly positive or negative in bootstrap samples.
+
+The 95% confidence interval for r^2 is [`r round(ci_result[,"ratio_lower"], 3)`, `r round(ci_result[,"ratio_upper"], 3)`]. Since the interval does not include zero, beta1 and beta2 tend to have opposite signs in almost all bootstrap samples
