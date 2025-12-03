@@ -155,7 +155,6 @@ Overall, the plot suggests a consistent pattern where male-victim homicides are 
 ```{r import dataset}
 library(p8105.datasets)
 data("weather_df")
-set.seed(1234)
 # keep only rows with complete data
 weather = weather_df |>
   drop_na(tmax, tmin, prcp)
@@ -163,6 +162,7 @@ weather = weather_df |>
 
 #### Bootstrap resamples and estimates
 ```{r bootstrap estimates}
+set.seed(1234)
 weather_boot = weather |>
   modelr::bootstrap(n = 5000)
 # fit the regression in each bootstrap sample
@@ -269,6 +269,9 @@ birthweight_df = birthweight_df |>
 ```
 
 #### Proposed regression model
+The proposed model was based on a hypothesized structure for the biological and maternal factors that underlie birthweight, such as baby sex, head circumference, etc.. 
+
+The modeling process involved selecting predictors based on theoretical expectations about birthweight determinants. The relationship between predictors and outcome is compared through fitting in a multiple linear regression model. The model accuracy is accessed through residual diagnostics. The proposed model is also compared to two other models using cross-validated prediction error. 
 ```{r proposed model}
 # outcome = bwt
 # predictors: baby sex, head circumference, length, gestational age, pre-pregnancy, BMI, smoking, weight gain
@@ -316,6 +319,7 @@ bw_head_len_sex_int_model =
 
 #### Cross validation
 ```{r cross validation}
+set.seed(1234)
 cv_df = 
   crossv_mc(birthweight_df, 100) |>
   mutate(
@@ -372,9 +376,12 @@ cv_summary = cv_long |>
   group_by(model) |>
   summarize(
     mean_rmse = mean(rmse), 
-    sd_rmse = sd(rmse)
-  ) |>
-  knitr::kable()
+    sd_rmse = sd(rmse),
+    median_rmse = median(rmse)
+  )
+
+knitr::kable(cv_summary)
+
 
 cv_long |>
   ggplot(aes(x = model, y = rmse)) +
@@ -385,6 +392,6 @@ cv_long |>
     y = "RMSE (cross-validated)", 
     title = "Comparison of cross-validated prediction error"
   )
-
 ```
 
+The violin plots shows that the proposed model has the smallest mean RMSE (`r round(cv_summary %>% filter(model == "prop") %>% pull(mean_rmse), 3)`) and median RMSE (`r round(cv_summary %>% filter(model == "prop") %>% pull(median_rmse), 3)`). The entire distribution is shifted downward relative to the two other models (main effect model and interaction model). The small RMSE indicates better predictive accuracy of the proposed model. Among the three, the main effect (len + gae) model has the highest mean and median RMSE, and the entire distribution is higher. This implies worse performance on predicting birthweight outcome.
