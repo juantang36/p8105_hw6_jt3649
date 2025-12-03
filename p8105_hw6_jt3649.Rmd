@@ -8,6 +8,7 @@ output: github_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(ggplot2)
+library(modelr)
 
 ```
 
@@ -47,7 +48,7 @@ homicides_clean = homicides_raw |>
 # predictors: victim_age, victim_sex, victim_race
 baltimore_data = homicides_clean |>
   filter(city_state == "Baltimore, MD")
-# fit losgistic regression model
+# fit logistic regression model
 baltimore_fit = glm(
   solved ~ victim_age + victim_sex + victim_race, 
   data = baltimore_data, 
@@ -169,18 +170,30 @@ weather_boot = weather |>
 boot_result = weather_boot |>
   mutate(
     fit = map(strap, ~lm(tmax ~ tmin + prcp, data = .x)), 
-    glnc = map(fit, broom::glance), 
-    tidy = map(fit, broom::tidy)
+    model_summary = map(fit, broom::glance), 
+    coefficients = map(fit, broom::tidy)
   ) |>
-  mutate(
-    r_sq = map_dbl(glnc, "r.squared"), 
-    beta1 = map_dbl(tidy, ~.x$estimate[.x$term == "tmin"]), 
-    beta2 = map_dbl(tidy, ~.x$estimate[.x$term == "prcp"]), 
-    beta_ratio = beta1/beta2
+  select(-strap, -fit) |>
+  unnest(model_summary) |>
+  select(
+    bootstrap_id = .id, 
+    r_sq = r.squared, 
+    coefficients
   ) |>
-  select(.id, r_sq, beta_ratio)
+  unnest(coefficients) |>
+  filter(term %in% c("tmin", "prcp")) |>
+  select(
+    bootstrap_id, r_sq, term, coefficient = estimate
+  ) |>
+  pivot_wider(
+    names_from = term, 
+    values_from = coefficient
+  ) |>
+  mutate(beta_ratio = tmin/prcp) |>
+  select(bootstrap_id, r_sq, beta_ratio)
 
-boot_result |> head()
+boot_result |> head() |>
+  knitr::kable()
 ```
 
 #### Distribution of estimates
@@ -212,15 +225,15 @@ ci_result = boot_result |>
   summarize(
     r2_lower = quantile(r_sq, 0.025), 
     r2_upper = quantile(r_sq, 0.975), 
-    ratio_lower = quantile(beta_ratio, 0.025), 
-    ratio_upper = quantile(beta_ratio, 0.975)
+    ratio_lower = quantile(beta_ratio, 0.025, na.rm = TRUE), 
+    ratio_upper = quantile(beta_ratio, 0.975, na.rm = TRUE)
   )
 knitr::kable(ci_result)
 ```
 
 #### Comment on distribution
 ##### Distribution of R^2
-The bootstrap distribution of r^2 is approximately bell-shaped and symmertric, centered around 0.94. This indicates that across the repeated resampling of the Central Park weather data, the fitted linear regression model with predictors tmin and prcp are able to explain about 94% of the variability in tmax.
+The bootstrap distribution of r^2 is approximately bell-shaped and symmetric, centered around 0.94. This indicates that across the repeated resampling of the Central Park weather data, the fitted linear regression model with predictors tmin and prcp are able to explain about 94% of the variability in tmax.
 
 The 95% confidence interval for r^2 is [`r round(ci_result[,"r2_lower"], 3)`, `r round(ci_result[,"r2_upper"], 3)`].
 
@@ -255,6 +268,123 @@ birthweight_df = birthweight_df |>
   drop_na()
 ```
 
+#### Proposed regression model
+```{r proposed model}
+# outcome = bwt
+# predictors: baby sex, head circumference, length, gestational age, pre-pregnancy, BMI, smoking, weight gain
+bw_model = lm(
+  bwt ~ babysex + bhead + blength + gaweeks + ppbmi + smoken + wtgain, 
+  data = birthweight_df
+)
 
+bw_model_result = bw_model |> broom::tidy()
+knitr::kable(bw_model_result)
+```
 
+#### Residuals vs fitted plot
+```{r residuals vs fitted plot}
+birthweight_resid_df = 
+  birthweight_df |>
+  modelr::add_predictions(bw_model) |>
+  modelr::add_residuals(bw_model)
+
+birthweight_resid_df |>
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point(alpha = 0.3) + 
+  geom_hline(yintercept = 0, linetype = "dashed") + 
+  labs(
+    x = "Fitted values", 
+    y = "Residuals", 
+    title = "Residuals vs fitted values for birthweight model"
+  )
+```
+
+#### Main effect model and interaction model
+```{r main effect model}
+bw_len_gae_model = 
+  lm(
+    bwt ~ blength + gaweeks, 
+     data = birthweight_df
+    )
+
+bw_head_len_sex_int_model = 
+  lm(
+    bwt ~ bhead * blength * babysex, 
+    data = birthweight_df
+  )
+```
+
+#### Cross validation
+```{r cross validation}
+cv_df = 
+  crossv_mc(birthweight_df, 100) |>
+  mutate(
+    train = map(train, as_tibble), 
+    test = map(test, as_tibble)
+  ) |>
+  mutate(
+    # fit each model on each training set
+    # proposed bw model
+    bw_prop_model = map(
+      train, 
+      \(df) lm(
+        bwt ~ babysex + bhead + blength + gaweeks + ppbmi + smoken + wtgain, 
+        data = df
+      )
+    ), 
+    # main effect model
+    bw_len_gae_model = map(
+      train, 
+      \(df) lm(bwt ~ blength + gaweeks, data = df)
+    ), 
+    # interaction model
+    bw_head_len_sex_int_model = map(
+      train, 
+      \(df) lm(bwt ~ bhead * blength * babysex, data = df)
+    )
+  ) |>
+  mutate(
+    # compute RMSE on corresponding test set
+    rmse_prop = map2_dbl(bw_prop_model, test, \(mod, df) rmse(model = mod, data = df)), 
+    rmse_len_gae = map2_dbl(bw_len_gae_model, test, \(mod, df) rmse(model = mod, data = df)),
+    rmse_head_len_sex_int_model = map2_dbl(bw_head_len_sex_int_model, test, \(mod, df) rmse(model = mod, data = df))
+  )
+
+cv_df |>
+  select(starts_with("rmse")) |>
+  summary()
+```
+
+#### Plot and compare cross validation RMSEs
+```{r compare cv}
+cv_long = 
+  cv_df |>
+  select(starts_with("rmse")) |>
+  pivot_longer(
+    cols = everything(), 
+    names_to = "model", 
+    values_to = "rmse", 
+    names_prefix = "rmse_"
+  ) |>
+  mutate(model = fct_inorder(model))
+
+cv_summary = cv_long |>
+  group_by(model) |>
+  summarize(
+    mean_rmse = mean(rmse), 
+    sd_rmse = sd(rmse)
+  ) |>
+  knitr::kable()
+
+cv_long |>
+  ggplot(aes(x = model, y = rmse)) +
+  geom_violin() + 
+  geom_boxplot(width = 0.15, outlier.alpha = 0.3) + 
+  labs(
+    x = "Model", 
+    y = "RMSE (cross-validated)", 
+    title = "Comparison of cross-validated prediction error"
+  )
+
+```
 
